@@ -1,0 +1,336 @@
+[
+  {
+    "id": "flow1",
+    "type": "tab",
+    "label": "TempRegulator Red/Blue",
+    "disabled": false,
+    "info": "Plateforme victime : régulateur rayon frais (simulé TempRegulator). Phase 1 = vulnérable."
+  },
+  {
+    "id": "brokerLocal",
+    "type": "mqtt-broker",
+    "name": "Mosquitto LOCAL (victime)",
+    "broker": "192.168.10.10",
+    "port": "1883",
+    "clientid": "nodered-g1",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true
+  },
+  {
+    "id": "brokerHive",
+    "type": "mqtt-broker",
+    "name": "HiveMQ Cloud",
+    "broker": "VOTRE-CLUSTER.s1.eu.hivemq.cloud",
+    "port": "8883",
+    "clientid": "nodered-cloud-g1",
+    "autoConnect": true,
+    "usetls": true,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true
+  },
+  {
+    "id": "uiBase",
+    "type": "ui_base",
+    "theme": {
+      "name": "theme-dark"
+    }
+  },
+  {
+    "id": "uiTab",
+    "type": "ui_tab",
+    "name": "Supermarché",
+    "icon": "dashboard",
+    "order": 1
+  },
+  {
+    "id": "grpTemp",
+    "type": "ui_group",
+    "name": "Rayon frais Fridge1",
+    "tab": "uiTab",
+    "order": 1,
+    "disp": true,
+    "width": "6"
+  },
+  {
+    "id": "grpCtrl",
+    "type": "ui_group",
+    "name": "Supervision / Commandes",
+    "tab": "uiTab",
+    "order": 2,
+    "disp": true,
+    "width": "6"
+  },
+  {
+    "id": "mqttTelem",
+    "type": "mqtt in",
+    "z": "flow1",
+    "name": "telemetry (local)",
+    "topic": "market/g1/fridge/telemetry",
+    "qos": "0",
+    "broker": "brokerLocal",
+    "x": 140,
+    "y": 80,
+    "wires": [
+      [
+        "jsonTelem"
+      ]
+    ]
+  },
+  {
+    "id": "jsonTelem",
+    "type": "json",
+    "z": "flow1",
+    "name": "",
+    "x": 330,
+    "y": 80,
+    "wires": [
+      [
+        "fnReg"
+      ]
+    ]
+  },
+  {
+    "id": "fnReg",
+    "type": "function",
+    "z": "flow1",
+    "name": "Régulateur TempRegulator",
+    "func": "var t = msg.payload;\n// Logique régulateur : alarme si chaîne du froid rompue.\nt.alarm = (t.temp > 8) && !t.mute;\nflow.set('last', t);\nmsg.topic = 'market/g1/fridge/telemetry';\n// Sorties : [cloud mirror, jauge temp, jauge hum, texte defrost, debug]\nreturn [\n  { payload: JSON.stringify(t) },\n  { payload: t.temp },\n  { payload: t.hum },\n  { payload: t.defrost ? 'DEGIVRAGE ACTIF' : 'OK' },\n  { payload: t }\n];",
+    "outputs": 5,
+    "x": 520,
+    "y": 80,
+    "wires": [
+      [
+        "mqttHiveOut"
+      ],
+      [
+        "gTemp"
+      ],
+      [
+        "gHum"
+      ],
+      [
+        "tDefrost"
+      ],
+      [
+        "dbgTelem"
+      ]
+    ]
+  },
+  {
+    "id": "mqttHiveOut",
+    "type": "mqtt out",
+    "z": "flow1",
+    "name": "-> HiveMQ mirror",
+    "topic": "market/g1/fridge/telemetry",
+    "qos": "0",
+    "retain": "false",
+    "broker": "brokerHive",
+    "x": 760,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "gTemp",
+    "type": "ui_gauge",
+    "z": "flow1",
+    "name": "Température",
+    "group": "grpTemp",
+    "order": 1,
+    "width": "6",
+    "height": "4",
+    "gtype": "gage",
+    "title": "Température",
+    "label": "°C",
+    "format": "{{value}}",
+    "min": "-5",
+    "max": "25",
+    "colors": [
+      "#00b3fd",
+      "#00c853",
+      "#ff1744"
+    ],
+    "seg1": "8",
+    "seg2": "12",
+    "x": 760,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "gHum",
+    "type": "ui_gauge",
+    "z": "flow1",
+    "name": "Humidité",
+    "group": "grpTemp",
+    "order": 2,
+    "width": "6",
+    "height": "4",
+    "gtype": "gage",
+    "title": "Humidité",
+    "label": "%",
+    "format": "{{value}}",
+    "min": "0",
+    "max": "100",
+    "colors": [
+      "#00c853",
+      "#ffc107",
+      "#ff1744"
+    ],
+    "x": 760,
+    "y": 140,
+    "wires": []
+  },
+  {
+    "id": "tDefrost",
+    "type": "ui_text",
+    "z": "flow1",
+    "name": "Etat dégivrage",
+    "group": "grpTemp",
+    "order": 3,
+    "width": "12",
+    "height": "1",
+    "label": "Dégivrage",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 770,
+    "y": 180,
+    "wires": []
+  },
+  {
+    "id": "dbgTelem",
+    "type": "debug",
+    "z": "flow1",
+    "name": "debug telemetry",
+    "active": true,
+    "complete": "payload",
+    "x": 770,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "mqttNotify",
+    "type": "mqtt in",
+    "z": "flow1",
+    "name": "notify",
+    "topic": "market/g1/tab5/notify",
+    "qos": "0",
+    "broker": "brokerLocal",
+    "x": 130,
+    "y": 300,
+    "wires": [
+      [
+        "jsonNotify"
+      ]
+    ]
+  },
+  {
+    "id": "jsonNotify",
+    "type": "json",
+    "z": "flow1",
+    "name": "",
+    "x": 310,
+    "y": 300,
+    "wires": [
+      [
+        "uiNotify"
+      ]
+    ]
+  },
+  {
+    "id": "uiNotify",
+    "type": "ui_template",
+    "z": "flow1",
+    "name": "Bandeau notif (XSS!)",
+    "group": "grpCtrl",
+    "order": 1,
+    "width": "12",
+    "height": "2",
+    "format": "<div style=\"padding:8px;border-radius:6px;background:#263238;color:#fff\">\n  <b>Notification :</b>\n  <span>{{msg.payload.msg}}</span>  <!-- VULNÉRABLE : rendu HTML non échappé -->\n</div>",
+    "storeOutMessages": true,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "x": 500,
+    "y": 300,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "btnOn",
+    "type": "ui_button",
+    "z": "flow1",
+    "name": "Dégivrage ON",
+    "group": "grpCtrl",
+    "order": 2,
+    "width": "6",
+    "height": "1",
+    "label": "Dégivrage ON",
+    "color": "",
+    "bgcolor": "#ff5252",
+    "payload": "{\"defrost\":true}",
+    "payloadType": "json",
+    "topic": "",
+    "x": 140,
+    "y": 420,
+    "wires": [
+      [
+        "mqttCmdLocal"
+      ]
+    ]
+  },
+  {
+    "id": "btnOff",
+    "type": "ui_button",
+    "z": "flow1",
+    "name": "Dégivrage OFF",
+    "group": "grpCtrl",
+    "order": 3,
+    "width": "6",
+    "height": "1",
+    "label": "Dégivrage OFF",
+    "color": "",
+    "bgcolor": "#4caf50",
+    "payload": "{\"defrost\":false}",
+    "payloadType": "json",
+    "topic": "",
+    "x": 140,
+    "y": 460,
+    "wires": [
+      [
+        "mqttCmdLocal"
+      ]
+    ]
+  },
+  {
+    "id": "mqttHiveCmd",
+    "type": "mqtt in",
+    "z": "flow1",
+    "name": "cmd distante (HiveMQ)",
+    "topic": "market/g1/fridge/cmd",
+    "qos": "0",
+    "broker": "brokerHive",
+    "x": 150,
+    "y": 520,
+    "wires": [
+      [
+        "mqttCmdLocal"
+      ]
+    ]
+  },
+  {
+    "id": "mqttCmdLocal",
+    "type": "mqtt out",
+    "z": "flow1",
+    "name": "cmd -> sonde (local, QoS2)",
+    "topic": "market/g1/fridge/cmd",
+    "qos": "2",
+    "retain": "false",
+    "broker": "brokerLocal",
+    "x": 430,
+    "y": 470,
+    "wires": []
+  }
+]
