@@ -30,7 +30,12 @@ Autrement dit :
 pip install paho-mqtt          # seule dépendance de mqtt_pentest.py
 python3 mqtt_pentest.py        # régler TARGET (IP du broker) et GROUP (g1..g4) en tête du fichier
 ```
-
+## Liens pref. Arduino
+https://arduino.esp8266.com/stable/package_esp8266com_index.json
+https://dl.espressif.com/dl/package_esp32_index.json
+https://espressif.github.io/arduino-esp32/package_esp32_index.json
+https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
 Sous Windows : `python mqtt_pentest.py` (ou `py mqtt_pentest.py`).
 
 > Pour un montage **tout en Wi-Fi** (partage de connexion téléphone), les attaques Wi-Fi/MITM
