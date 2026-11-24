@@ -1,0 +1,234 @@
+[
+  {
+    "id": "flowLS",
+    "type": "tab",
+    "label": "LifeSign & Latence",
+    "disabled": false,
+    "info": "Surveillance de la périodicité (LifeSign) et de la latence — révèle les DDoS."
+  },
+  {
+    "id": "brkLS",
+    "type": "mqtt-broker",
+    "name": "Mosquitto central",
+    "broker": "192.168.10.10",
+    "port": "1883",
+    "clientid": "nodered-lifesign-g1",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true
+  },
+  {
+    "id": "uiBaseLS",
+    "type": "ui_base",
+    "theme": {
+      "name": "theme-dark"
+    }
+  },
+  {
+    "id": "uiTabLS",
+    "type": "ui_tab",
+    "name": "LifeSign",
+    "icon": "dashboard",
+    "order": 2
+  },
+  {
+    "id": "grpLS",
+    "type": "ui_group",
+    "name": "Surveillance LifeSign / Latence (g1)",
+    "tab": "uiTabLS",
+    "order": 1,
+    "disp": true,
+    "width": "8"
+  },
+  {
+    "id": "mqttLS",
+    "type": "mqtt in",
+    "z": "flowLS",
+    "name": "telemetry (LifeSign)",
+    "topic": "market/g1/fridge/telemetry",
+    "qos": "0",
+    "broker": "brkLS",
+    "x": 150,
+    "y": 120,
+    "wires": [
+      [
+        "fnLife"
+      ]
+    ]
+  },
+  {
+    "id": "wdog",
+    "type": "inject",
+    "z": "flowLS",
+    "name": "watchdog 1s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "1",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 1,
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 150,
+    "y": 200,
+    "wires": [
+      [
+        "fnWatch"
+      ]
+    ]
+  },
+  {
+    "id": "fnLife",
+    "type": "function",
+    "z": "flowLS",
+    "name": "LifeSign / latence",
+    "func": "var now = Date.now();\nvar EXP = parseInt(env.get('LIFESIGN_MS')) || 2000;  // périodicité attendue\nvar last = flow.get('ls_last');\nvar interval = (last === undefined) ? EXP : (now - last);\nflow.set('ls_last', now);\nif (interval < 1) interval = 1;\nvar ratio = interval / EXP;\nvar state = ratio <= 1.5 ? 'OK' : (ratio <= 3 ? 'LENT - latence' : 'CRITIQUE - DDoS ?');\nvar d = new Date(now);\nvar p = function(x){ return (x<10?'0':'')+x; };\nvar recu = p(d.getDate())+'/'+p(d.getMonth()+1)+'  '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());\nnode.status({fill: ratio<=1.5?'green':(ratio<=3?'yellow':'red'), shape:'dot', text: interval+' ms'});\nreturn [\n  { payload: recu },\n  { payload: interval + ' ms  (attendu ~' + EXP + ' ms)' },\n  { payload: interval },\n  { payload: state },\n  { payload: interval, topic: 'intervalle (ms)' }\n];",
+    "outputs": 5,
+    "x": 430,
+    "y": 120,
+    "wires": [
+      [
+        "uiRecu"
+      ],
+      [
+        "uiDelai"
+      ],
+      [
+        "uiGauge"
+      ],
+      [
+        "uiEtat"
+      ],
+      [
+        "uiChart"
+      ]
+    ]
+  },
+  {
+    "id": "fnWatch",
+    "type": "function",
+    "z": "flowLS",
+    "name": "watchdog LifeSign",
+    "func": "var now = Date.now();\nvar EXP = parseInt(env.get('LIFESIGN_MS')) || 2000;\nvar last = flow.get('ls_last');\nif (last === undefined) return null;\nvar silence = now - last;\nif (silence > EXP*3) {\n  return { payload: 'LifeSign PERDU (' + Math.round(silence/1000) + ' s sans message)' };\n}\nreturn null;",
+    "outputs": 1,
+    "x": 430,
+    "y": 200,
+    "wires": [
+      [
+        "uiEtat"
+      ]
+    ]
+  },
+  {
+    "id": "uiRecu",
+    "type": "ui_text",
+    "z": "flowLS",
+    "group": "grpLS",
+    "order": 1,
+    "width": "8",
+    "height": "1",
+    "name": "Réception",
+    "label": "Dernière réception (j/m hh:mm:ss)",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 720,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "uiDelai",
+    "type": "ui_text",
+    "z": "flowLS",
+    "group": "grpLS",
+    "order": 2,
+    "width": "8",
+    "height": "1",
+    "name": "Délai",
+    "label": "Intervalle depuis le message précédent",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 710,
+    "y": 110,
+    "wires": []
+  },
+  {
+    "id": "uiEtat",
+    "type": "ui_text",
+    "z": "flowLS",
+    "group": "grpLS",
+    "order": 3,
+    "width": "8",
+    "height": "1",
+    "name": "État LifeSign",
+    "label": "État LifeSign",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 720,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "uiGauge",
+    "type": "ui_gauge",
+    "z": "flowLS",
+    "name": "Intervalle",
+    "group": "grpLS",
+    "order": 4,
+    "width": "8",
+    "height": "4",
+    "gtype": "gage",
+    "title": "Intervalle de réception",
+    "label": "ms",
+    "format": "{{value}}",
+    "min": "0",
+    "max": "8000",
+    "colors": [
+      "#2e7d32",
+      "#e67e22",
+      "#c0392b"
+    ],
+    "seg1": "3000",
+    "seg2": "6000",
+    "x": 720,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "uiChart",
+    "type": "ui_chart",
+    "z": "flowLS",
+    "name": "Historique intervalle",
+    "group": "grpLS",
+    "order": 5,
+    "width": "8",
+    "height": "5",
+    "label": "Intervalle (ms) dans le temps",
+    "chartType": "line",
+    "legend": "false",
+    "xformat": "HH:mm:ss",
+    "interpolate": "linear",
+    "nodata": "",
+    "dot": false,
+    "ymin": "0",
+    "ymax": "",
+    "removeOlder": "5",
+    "removeOlderPoints": "",
+    "removeOlderUnit": "60",
+    "cutout": 0,
+    "useOneColor": false,
+    "colors": [
+      "#1565c0"
+    ],
+    "x": 740,
+    "y": 280,
+    "wires": [
+      []
+    ]
+  }
+]
