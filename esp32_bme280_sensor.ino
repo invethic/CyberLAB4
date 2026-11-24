@@ -1,7 +1,7 @@
 /* =============================================================================
  *  PROJET RED/BLUE - "TempRegulator Supermarket Attack"  |  GI-CNAM 4 / cybersécurité OT
  *  Fichier  : esp32_bme280_sensor.ino   (v4 : ESP8266 + BMP280 + OLED + LED RGB)
- *  Rôle     : SONDE FROID (simule le régulateur TempRegulator TempRegulator d'un rayon frais)
+ *  Rôle     : SONDE FROID (simule le régulateur TempRegulator d'un rayon frais)
  *
  *  >>> MATÉRIEL RÉEL (ta station météo en laiton) :
  *      - Carte  : ESP8266 (NodeMCU / Wemos D1)  ← PAS un ESP32
@@ -14,10 +14,17 @@
  *  (ou la carte exacte de ta station, celle qui compilait déjà ton ancien code).
  *
  *  >>> VERSION "VULNÉRABLE" (Phase 1).  Durcissements BLEU : // [DURCISSEMENT BLEU]
+ *
+ *  >>> ORDRE DES DÉCLARATIONS (c'est exactement ce qui bloquait la compilation) :
+ *      En C/C++, un identifiant doit être connu AVANT d'être utilisé.
+ *        1) #define GROUP ... AVANT la ligne  "sensor-" GROUP   (préprocesseur)
+ *        2) les variables globales (tempPub, pressReal, defrost, alarmActive...)
+ *           AVANT handleData() qui les lit                       (portée C++)
+ *      D'où l'ordre ci-dessous : defines → config → VARIABLES → serveur web → fonctions.
  * ============================================================================= */
 
 #include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>   // serveur web embarque
+#include <ESP8266WebServer.h>   // serveur web embarque (inclus dans le coeur ESP8266)
 #include <PubSubClient.h>
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
@@ -25,6 +32,15 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
+
+/* --------------------------- GROUPE & TOPICS MQTT -------------------------- */
+// >>> IDENTIFIANT DU GROUPE : g1, g2, g3 ou g4 (un par poste victime).
+//     DÉFINI ICI, EN PREMIER, car la ligne CLIENT_ID plus bas fait  "sensor-" GROUP.
+#define GROUP "g1"
+#define T_TELEMETRY ("market/" GROUP "/fridge/telemetry")
+#define T_CMD       ("market/" GROUP "/fridge/cmd")
+#define T_STATUS    ("market/" GROUP "/fridge/status")
+#define T_NOTIFY    ("market/" GROUP "/tab5/notify")
 
 /* --------------------------- BROCHES (comme ta station) -------------------- */
 #define SDA_PIN D2
@@ -40,15 +56,7 @@ const char* MQTT_HOST = "192.168.10.10";   // PC Node-RED / Mosquitto (VICTIME)
 uint16_t    MQTT_PORT = 1883;              // [DURCISSEMENT BLEU] -> 8883 (TLS)
 const char* MQTT_USER = "";                // [DURCISSEMENT BLEU] -> compte "sensor"
 const char* MQTT_PASS = "";
-const char* CLIENT_ID = "sensor-" GROUP;   // identifiant unique sur le broker partagé
-
-/* --------------------------- GROUPE & TOPICS MQTT -------------------------- */
-// >>> IDENTIFIANT DU GROUPE : g1, g2, g3 ou g4 (un par poste victime).
-#define GROUP "g1"
-#define T_TELEMETRY ("market/" GROUP "/fridge/telemetry")
-#define T_CMD       ("market/" GROUP "/fridge/cmd")
-#define T_STATUS    ("market/" GROUP "/fridge/status")
-#define T_NOTIFY    ("market/" GROUP "/tab5/notify")
+const char* CLIENT_ID = "sensor-" GROUP;   // concat littérale OK : GROUP est défini au-dessus
 
 /* --------------------------- ÉCRAN OLED SSD1306 ---------------------------- */
 #define OLED_W 128
@@ -62,11 +70,26 @@ bool oledPresent = false;
 const float DEFROST_RISE = 14.0;       // °C au-dessus du réel au max du dégivrage
 const float ALARM_LIMIT  = 8.0;        // chaîne du froid rompue au-dessus de ce seuil
 
-/* --------------------------- OBJETS / ÉTAT -------------------------------- */
+/* --------------------------- OBJETS -------------------------------------- */
 WiFiClient   net;
 PubSubClient mqtt(net);
 Adafruit_BMP280 bmp;
 bool  sensorOk = false;
+
+/* --------- VARIABLES GLOBALES D'ÉTAT (déclarées AVANT le serveur web) ------ */
+// handleData() plus bas lit tempPub / pressReal / defrost / alarmActive :
+// elles doivent exister AVANT d'être utilisées -> on les déclare ICI.
+float setpoint    = 4.0;
+float tempReal    = 0.0;    // vraie température BMP280
+float pressReal   = 0.0;    // vraie pression hPa
+float defrostBias = 0.0;
+bool  defrost     = false;
+bool  alarmMuted  = false;
+float tempPub     = 0.0;
+bool  alarmActive = false;
+
+unsigned long lastPub = 0;
+const unsigned long PUB_PERIOD = 2000;
 
 /* ------------------------- SERVEUR WEB EMBARQUE --------------------------- */
 // Variante ESP32 : #include <WebServer.h>  +  WebServer server(80);
@@ -126,19 +149,6 @@ void handleData(){
   j += "}";
   server.send(200, "application/json", j);
 }
-
-
-float setpoint    = 4.0;
-float tempReal    = 0.0;    // vraie température BMP280
-float pressReal   = 0.0;    // vraie pression hPa
-float defrostBias = 0.0;
-bool  defrost     = false;
-bool  alarmMuted  = false;
-float tempPub     = 0.0;
-bool  alarmActive = false;
-
-unsigned long lastPub = 0;
-const unsigned long PUB_PERIOD = 2000;
 
 /* ------------------------------- LED RGB --------------------------------- */
 // Reprend exactement ta logique (LED common-anode : valeur inversée).
